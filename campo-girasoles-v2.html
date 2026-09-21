@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campo de girasoles</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;height:100%;
+    background:#20242c;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  canvas{
+    display:block;
+    max-width:100%;
+    max-height:100%;
+  }
+  #caption{
+    position:fixed;
+    left:0; right:0; bottom:6%;
+    z-index:10;
+    text-align:center;
+    color:#fff6e6;
+    font-family:Georgia, 'Times New Roman', serif;
+    font-style:italic;
+    font-size:clamp(14px, 3vw, 19px);
+    text-shadow:0 1px 6px rgba(60,30,5,0.65), 0 0 3px rgba(60,30,5,0.5);
+    padding:0 6%;
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="caption">aquí sus flores amarillas, por si el mk que les gusta no les dio</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize(){
+  const w = Math.min(window.innerWidth, 900);
+  const h = w * 0.62;
+  canvas.width = w * devicePixelRatio;
+  canvas.height = h * devicePixelRatio;
+  canvas.style.width = w+'px';
+  canvas.style.height = h+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  buildField();
+}
+function W(){ return canvas.width/devicePixelRatio; }
+function H(){ return canvas.height/devicePixelRatio; }
+
+function lerp(a,b,k){ return a+(b-a)*k; }
+function mixHex(hexA, hexB, k){
+  const a = parseInt(hexA.slice(1),16), b = parseInt(hexB.slice(1),16);
+  const ar=(a>>16)&255, ag=(a>>8)&255, ab=a&255;
+  const br=(b>>16)&255, bg=(b>>8)&255, bb=b&255;
+  const r = Math.round(lerp(ar,br,k)), g = Math.round(lerp(ag,bg,k)), bl = Math.round(lerp(ab,bb,k));
+  return `rgb(${r},${g},${bl})`;
+}
+
+// --- construir el campo con perspectiva ---
+let rows = [];
+const HAZE = '#e8b169';
+function buildField(){
+  rows = [];
+  const w = W(), h = H();
+  const horizon = h*0.52;
+  const bottom = h;
+  const rowCount = 26;
+
+  for(let i=0;i<rowCount;i++){
+    const t = i/(rowCount-1);           // 0 lejos, 1 cerca
+    const persp = t*t;
+    const y = horizon + persp*(bottom-horizon);
+    const size = 3 + persp*32;
+    const spacing = size*1.02;
+    const haze = Math.max(0, 1-t*1.35);  // cuánto se mezcla con la neblina dorada
+    const flowers = [];
+    for(let x=-spacing; x<w+spacing; x+=spacing){
+      flowers.push({
+        x: x + (Math.random()-0.5)*spacing*0.85,
+        yJitter: (Math.random()-0.5)*size*0.3,
+        size: size*(0.78+Math.random()*0.5),
+        phase: Math.random()*Math.PI*2,
+        speed: 0.35+Math.random()*0.3,
+        petalWarm: Math.random(),      // variación de color por flor
+        faceTilt: (Math.random()-0.5)*0.5, // algunas giradas, no todas de frente
+        detailed: t>0.5
+      });
+    }
+    rows.push({ y, t, haze, flowers });
+  }
+}
+resize();
+window.addEventListener('resize', resize);
+
+let start = null;
+
+function drawFlowerSimple(x, y, size, sway, haze){
+  const petalC = mixHex('#e3ad3a', HAZE, haze*0.8);
+  const centerC = mixHex('#5a3416', HAZE, haze*0.9);
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(1, 0.86); // ligera perspectiva, vistas casi de frente
+  ctx.rotate(sway*0.4);
+  ctx.fillStyle = petalC;
+  ctx.beginPath();
+  ctx.arc(0,0,size*0.5,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = centerC;
+  ctx.beginPath();
+  ctx.arc(0,0,size*0.22,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFlowerDetailed(x, y, size, sway, warm, faceTilt){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(1-Math.abs(faceTilt)*0.35, 0.9); // algunas caras ligeramente giradas
+  ctx.rotate(sway*0.3 + faceTilt*0.3);
+
+  const petals = 16;
+  const cA = mixHex('#f6c23c', '#ffdd7a', warm);
+  const cB = mixHex('#e08f1f', '#f4a83a', warm);
+
+  for(let i=0;i<petals;i++){
+    const a = (i/petals)*Math.PI*2;
+    ctx.save();
+    ctx.rotate(a);
+    const len = size*0.6*(0.92+0.1*Math.sin(i*3));
+    const grad = ctx.createLinearGradient(0,0,0,-len);
+    grad.addColorStop(0, cB);
+    grad.addColorStop(0.65, cA);
+    grad.addColorStop(1, '#ffe79c');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(-size*0.05,0);
+    ctx.quadraticCurveTo(size*0.2, -len*0.6, 0, -len);
+    ctx.quadraticCurveTo(-size*0.2, -len*0.6, size*0.05, 0);
+    ctx.fill();
+    // sombra sutil entre pétalos
+    ctx.fillStyle = 'rgba(90,50,10,0.08)';
+    ctx.beginPath();
+    ctx.ellipse(0,-len*0.5, size*0.05, len*0.4, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // centro con textura concéntrica
+  const centerR = size*0.32;
+  const cgrad = ctx.createRadialGradient(-centerR*0.2,-centerR*0.2,centerR*0.1,0,0,centerR);
+  cgrad.addColorStop(0, '#7a4a22');
+  cgrad.addColorStop(0.55, '#4a2810');
+  cgrad.addColorStop(1, '#2e1608');
+  ctx.fillStyle = cgrad;
+  ctx.beginPath();
+  ctx.arc(0,0,centerR,0,Math.PI*2);
+  ctx.fill();
+
+  if(centerR>6){
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    const rings = 3;
+    for(let r=1;r<=rings;r++){
+      const rr = centerR*(r/rings)*0.85;
+      const dots = 6*r;
+      for(let d=0; d<dots; d++){
+        const da = (d/dots)*Math.PI*2 + r;
+        ctx.beginPath();
+        ctx.arc(Math.cos(da)*rr, Math.sin(da)*rr, Math.max(0.4,centerR*0.045), 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function frame(ts){
+  if(!start) start = ts;
+  const t = (ts-start)/1000;
+
+  const w = W(), h = H();
+  ctx.clearRect(0,0,w,h);
+
+  const horizon = h*0.52;
+
+  // --- cielo de atardecer ---
+  const sky = ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0,   '#8fa7c2');
+  sky.addColorStop(0.32,'#cfab8c');
+  sky.addColorStop(0.62,'#ec9f61');
+  sky.addColorStop(1,   '#ffdc98');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,w,horizon+2);
+
+  // nubes finas, estáticas en forma, con leve resplandor
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = '#fff2df';
+  [0.14,0.26,0.38,0.46].forEach((yr,i)=>{
+    const cw = 90+i*35;
+    ctx.beginPath();
+    ctx.ellipse(w*(0.12+i*0.26), horizon*yr, cw, 6+i, 0, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // sol bajo, cerca del horizonte, con pulso muy sutil
+  const sunX = w*0.64, sunY = horizon - h*0.012;
+  const pulse = 1 + 0.015*Math.sin(t*0.6);
+  const glow = ctx.createRadialGradient(sunX,sunY,0, sunX,sunY,170*pulse);
+  glow.addColorStop(0,'rgba(255,246,220,0.95)');
+  glow.addColorStop(0.35,'rgba(255,196,110,0.45)');
+  glow.addColorStop(1,'rgba(255,196,110,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0,0,w,horizon+40);
+
+  ctx.fillStyle = '#fffaf0';
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, 25*pulse, 0, Math.PI*2);
+  ctx.fill();
+
+  // franja de neblina dorada donde el campo se funde con el cielo
+  const hazeGrad = ctx.createLinearGradient(0,horizon-14,0,horizon+36);
+  hazeGrad.addColorStop(0,'rgba(232,177,105,0)');
+  hazeGrad.addColorStop(1,'rgba(214,154,72,0.95)');
+  ctx.fillStyle = hazeGrad;
+  ctx.fillRect(0,horizon-14,w,50);
+
+  // --- campo, de lejos a cerca ---
+  rows.forEach(row=>{
+    const y = row.y;
+    row.flowers.forEach(f=>{
+      const sway = Math.sin(t*f.speed+f.phase)*0.12;
+      const s = f.size;
+      const fy = y + f.yJitter;
+      if(f.detailed){
+        ctx.strokeStyle = mixHex('#2c4a24', HAZE, row.haze*0.6);
+        ctx.lineWidth = Math.max(1, s*0.07);
+        ctx.beginPath();
+        ctx.moveTo(f.x, fy+s*0.35);
+        ctx.lineTo(f.x+sway*3, fy+s*1.05);
+        ctx.stroke();
+        drawFlowerDetailed(f.x, fy, s, sway, f.petalWarm, f.faceTilt);
+      } else {
+        drawFlowerSimple(f.x, fy, s, sway, row.haze);
+      }
+    });
+  });
+
+  // viñeta suave para dar profundidad
+  const vin = ctx.createRadialGradient(w*0.5,h*0.55,h*0.25, w*0.5,h*0.55,h*0.75);
+  vin.addColorStop(0,'rgba(0,0,0,0)');
+  vin.addColorStop(1,'rgba(20,10,5,0.18)');
+  ctx.fillStyle = vin;
+  ctx.fillRect(0,0,w,h);
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
